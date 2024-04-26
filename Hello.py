@@ -1,51 +1,133 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import streamlit as st
-from streamlit.logger import get_logger
+import re
+import os
+from generate_response import gen_resp, gen_general_resp, gen_ux_resp
+from bs4 import BeautifulSoup
 
-LOGGER = get_logger(__name__)
+# App title
+st.set_page_config(page_title="🦙💬 Llama 2 Chatbot")
+
+# Replicate Credentials
+with st.sidebar:
+    st.title('Generative User Interfaces Demo')
+    st.session_state.key = st.text_input('OpenAI Key')
+
+introduction = \
+"""
+Welcome to my Generative User Interfaces demo. I put this together over a weekend and hope you enjoy it!
+
+While interactive with LLMs through chat interfaces serve as a solid foundation, I firmly believe there's immense potential for more intuitive and effective forms of human-AI collaboration.
+This is a simple demo I put together to explore how it might feel if our interfaces were not pre-determined, but generated in real-time according to our needs.
+
+Note: Currently there is no real request being made or connected apis. So you can't actually book an uber even if you click book.
+
+You can ask me things below and see what kinds of UI I might generate:
+1. Book me a hotel next weekend near Whistler Blackcomb
+2. Help me brainstorm milkshake recipes
+3. or anything else
+
+"""
+# Store LLM generated responses
+if "messages" not in st.session_state.keys():    st.session_state.messages = [{"role": "assistant", "content": introduction}]
+
+# Display or clear chat messages
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
+
+def clear_chat_history():
+    st.session_state.messages = [{"role": "assistant", "content": introduction}]
+st.sidebar.button('Clear Chat History', on_click=clear_chat_history)
 
 
-def run():
-    st.set_page_config(
-        page_title="Hello",
-        page_icon="👋",
-    )
+# User-provided prompt
+if prompt := st.chat_input():
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.write(prompt)
 
-    st.write("# Welcome to Streamlit! 👋")
+def needs_ux(s):
+    pattern = r"needs_additional_information\s*=\s*True"
+    match = re.search(pattern, s, re.IGNORECASE)
+    if match:
+        start_index = match.end()
+        return s[start_index:]
+    else:
+        return None
 
-    st.sidebar.success("Select a demo above.")
+# output = """<!DOCTYPE html>
+# <html>
+# <head>
+#     <title>Uber Ride Booking Form</title>
+# </head>
+# <body>
+#     <h2>Uber Ride Booking</h2>
+#     <form>
+#         <!-- Pickup Location -->
+#         <label for="pickupLocation">Pickup Location:</label><br>
+#         <input type="text" id="pickupLocation" name="pickupLocation" required><br>
 
-    st.markdown(
-        """
-        Streamlit is an open-source app framework built specifically for
-        Machine Learning and Data Science projects.
-        **👈 Select a demo from the sidebar** to see some examples
-        of what Streamlit can do!
-        ### Want to learn more?
-        - Check out [streamlit.io](https://streamlit.io)
-        - Jump into our [documentation](https://docs.streamlit.io)
-        - Ask a question in our [community
-          forums](https://discuss.streamlit.io)
-        ### See more complex demos
-        - Use a neural net to [analyze the Udacity Self-driving Car Image
-          Dataset](https://github.com/streamlit/demo-self-driving)
-        - Explore a [New York City rideshare dataset](https://github.com/streamlit/demo-uber-nyc-pickups)
-    """
-    )
+#         <!-- Destination -->
+#         <label for="destination">Destination:</label><br>
+#         <input type="text" id="destination" name="destination" required><br>
+
+#         <!-- Ride Type -->
+#         <fieldset>
+#             <legend>Ride Type:</legend>
+#             <input type="radio" id="uberX" name="rideType" value="uberX" required>
+#             <label for="uberX">UberX</label><br>
+#             <input type="radio" id="uberBlack" name="rideType" value="uberBlack">
+#             <label for="uberBlack">Uber Black</label><br>
+#             <input type="radio" id="uberXL" name="rideType" value="uberXL">
+#             <label for="uberXL">UberXL</label><br>
+#             <input type="radio" id="uberSUV" name="rideType" value="uberSUV">
+#             <label for="uberSUV">UberSUV</label>
+#         </fieldset>
+
+#         <!-- Special Requirements -->
+#         <label for="specialRequirements">Special Requirements:</label><br>
+#         <textarea id="specialRequirements" name="specialRequirements" rows="4" cols="50"></textarea><br>
+
+#         <input type="submit" value="Request Uber">
+#     </form>
+# </body>
+# </html>
+# """
+
+def format_html(html: str) -> str:
+    # Using BeautifulSoup to parse and prettify the HTML, which will also remove unnecessary whitespace
+    soup = BeautifulSoup(html, 'html.parser')
+    formatted_html = soup.prettify()
+
+    # Splitting the formatted HTML into lines
+    lines = formatted_html.split('\n')
+
+    # Removing empty lines
+    non_empty_lines = [line for line in lines if line.strip() != '']
+
+    # Joining the non-empty lines back into a string
+    cleaned_html = '\n'.join(non_empty_lines)
+
+    return cleaned_html
 
 
-if __name__ == "__main__":
-    run()
+# with st.chat_message("assistant"):
+#     st.markdown(output, unsafe_allow_html=True)
+
+# Generate a new response if last message is not from assistant
+if st.session_state.messages[-1]["role"] != "assistant" and prompt:
+    if not st.session_state.key:
+        st.warning("Please provide OpenAPI key in sidebar")
+    else:
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                output = gen_general_resp(prompt, st.session_state.key)
+            ux_str = needs_ux(output)
+            if ux_str is None:
+                st.write(output)
+            else:
+                with st.spinner("Creating Experience..."):
+                    output = gen_ux_resp(ux_str, st.session_state.key)
+
+                output = format_html(output)
+                st.markdown(output, unsafe_allow_html=True)
